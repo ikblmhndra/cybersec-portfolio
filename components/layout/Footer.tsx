@@ -54,7 +54,7 @@ export default function Footer() {
             <div className="space-y-2">
               {[
                 { icon: Github, label: 'github.com/ikblmhndra', href: 'https://github.com/ikblmhndra' },
-                { icon: Linkedin, label: 'linkedin.com/in/ikblmhndra', href: 'https://linkedin.com/in/ikblmhndramahendra' },
+                { icon: Linkedin, label: 'linkedin.com/in/ikblmhndra', href: 'https://www.linkedin.com/in/ikblmhndra/' },
                 { icon: Mail, label: 'ikbalmahendra.96@gmail.com', href: 'mailto:ikbalmahendra.96@gmail.com' },
               ].map(({ icon: Icon, label, href }) => (
                 <a
