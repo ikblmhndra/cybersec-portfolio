@@ -90,9 +90,9 @@ const COMMANDS: Record<string, () => OutputLine> = {
   contact: () => ({
     type: 'success',
     content: [
-      'connect --email    ikbal@seclab.dev',
-      'connect --github   github.com/ikbalmahendra',
-      'connect --linkedin linkedin.com/in/ikbalmahendra',
+      'connect --email    ikbalmahendra.96@gmail.com',
+      'connect --github   github.com/ikblmhndra',
+      'connect --linkedin linkedin.com/in/ikblmhndramahendra',
       '',
       'PGP Key available on request.',
       'Response time: < 48 hours',

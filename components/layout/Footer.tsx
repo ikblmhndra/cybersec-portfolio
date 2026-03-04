@@ -53,9 +53,9 @@ export default function Footer() {
             </h4>
             <div className="space-y-2">
               {[
-                { icon: Github, label: 'github.com/ikbalmahendra', href: 'https://github.com/ikblmhndra' },
-                { icon: Linkedin, label: 'linkedin.com/in/ikbal', href: 'https://linkedin.com/in/ikbalmahendra' },
-                { icon: Mail, label: 'ikbal@seclab.dev', href: 'mailto:ikbal@seclab.dev' },
+                { icon: Github, label: 'github.com/ikblmhndra', href: 'https://github.com/ikblmhndra' },
+                { icon: Linkedin, label: 'linkedin.com/in/ikblmhndra', href: 'https://linkedin.com/in/ikblmhndramahendra' },
+                { icon: Mail, label: 'ikbalmahendra.96@gmail.com', href: 'mailto:ikbalmahendra.96@gmail.com' },
               ].map(({ icon: Icon, label, href }) => (
                 <a
                   key={href}

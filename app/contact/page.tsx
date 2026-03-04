@@ -15,7 +15,7 @@ const contactLinks = [
   {
     icon: Github,
     command: 'connect --github',
-    value: 'github.com/ikbalmahendra',
+    value: 'github.com/ikblmhndra',
     href: 'https://github.com/ikblmhndra',
     description: 'Open source projects and contributions',
   },
