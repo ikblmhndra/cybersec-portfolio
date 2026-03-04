@@ -1,0 +1,255 @@
+---
+title: "Defensive Network Strategies for Modern Infrastructure"
+description: "How to design network architectures that contain breaches, detect lateral movement, and provide forensic visibility — without becoming a maintenance nightmare."
+date: "2024-04-05"
+tags: ["network", "infrastructure", "hardening", "devsecops"]
+---
+
+The perimeter is dead. The moment you accepted that your infrastructure includes cloud resources, remote workers, and third-party integrations, the idea of a hard outer shell protecting a soft interior became a fantasy.
+
+Modern defensive networking is about **containing the blast radius** of inevitable compromises.
+
+## Zero Trust: Beyond the Buzzword
+
+Zero Trust has been so overmarketed that engineers roll their eyes at it. That's a shame, because the core principle is sound: **never trust, always verify**.
+
+In practice this means:
+
+1. **Identity is the new perimeter** — every request must be authenticated and authorized, regardless of network location
+2. **Microsegmentation** — workloads can only communicate with what they explicitly need
+3. **Continuous verification** — trust is not permanent, it expires and is re-evaluated
+
+Here's how to implement this practically, not theoretically.
+
+## Network Segmentation Architecture
+
+Stop thinking in DMZs. Think in *communication graphs*:
+
+```
+┌─────────────────────────────────────────────────┐
+│                   INTERNET                        │
+└──────────────┬──────────────────────────────────┘
+               │ HTTPS/443 only
+┌──────────────▼──────────────────────────────────┐
+│              EDGE LAYER                          │
+│  WAF → Load Balancer → DDoS Protection          │
+│  Allowed: TCP/443 in, TCP/80 redirect           │
+└──────────────┬──────────────────────────────────┘
+               │ Filtered traffic
+┌──────────────▼──────────────────────────────────┐
+│              APPLICATION LAYER                   │
+│  API Gateway, Frontend, Auth Services           │
+│  Can talk to: Service Layer                     │
+│  Cannot talk to: Database Layer directly        │
+└──────────────┬──────────────────────────────────┘
+               │ Service-authenticated only
+┌──────────────▼──────────────────────────────────┐
+│              SERVICE LAYER                       │
+│  Business logic, microservices                  │
+│  Can talk to: Data Layer (with auth)            │
+└──────────────┬──────────────────────────────────┘
+               │ Database protocol only
+┌──────────────▼──────────────────────────────────┐
+│              DATA LAYER                          │
+│  PostgreSQL, Redis, Object Storage              │
+│  No internet access — EVER                      │
+└─────────────────────────────────────────────────┘
+```
+
+Implement this with firewall rules that are **whitelist-based by default**:
+
+```bash
+#!/bin/bash
+# iptables baseline — whitelist approach
+
+# Flush existing
+iptables -F
+iptables -X
+iptables -t nat -F
+iptables -t mangle -F
+
+# Default deny
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT  # We'll tighten OUTPUT separately
+
+# Allow established connections
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -i lo -j ACCEPT
+
+# Allow SSH from management VLAN only
+iptables -A INPUT -s 10.100.0.0/24 -p tcp --dport 2222 -j ACCEPT
+
+# Allow application traffic
+iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+
+# Log dropped packets before the default deny hits
+iptables -A INPUT -m limit --limit 5/min -j LOG --log-prefix "[IPTABLES DROP]: "
+```
+
+## East-West Traffic Monitoring
+
+Most organizations instrument North-South traffic well but are blind to East-West movement. This is where lateral movement happens.
+
+Use Zeek (formerly Bro) for deep packet inspection:
+
+```bash
+# Install Zeek
+apt install zeek
+
+# /opt/zeek/etc/node.cfg
+[zeek]
+type=standalone
+host=localhost
+interface=eth0  # Monitor interface
+
+# Key logs to ship to your SIEM:
+# conn.log — all connections
+# dns.log — DNS queries (great for C2 detection)
+# http.log — HTTP metadata
+# ssl.log — TLS info (certificate details, JA3 fingerprints)
+# notice.log — Zeek's built-in detections
+```
+
+JA3 fingerprinting in SSL logs is particularly powerful for detecting malware — most malware has unique TLS client hello signatures:
+
+```python
+# Query your SIEM for rare JA3 hashes
+query = """
+index=zeek sourcetype=zeek:ssl
+| stats count by ja3, ja3s, server_name
+| where count < 5  
+| sort - count
+"""
+# Rare JA3 hashes connecting to external IPs = high priority investigation
+```
+
+## Detecting Lateral Movement
+
+Lateral movement patterns are often subtle. Here's what to watch:
+
+```python
+# Detection rules for common lateral movement patterns
+
+DETECTION_RULES = {
+    'smb_spray': {
+        'description': 'Single source accessing many SMB targets',
+        'query': '''
+            sourcetype=windows_security EventCode=4624 LogonType=3
+            | stats dc(dest) as unique_targets by src_ip
+            | where unique_targets > 20
+        ''',
+        'severity': 'high',
+    },
+    'new_admin_connection': {
+        'description': 'Admin tool used from unusual source',
+        'query': '''
+            sourcetype=zeek:conn
+            (dest_port=5985 OR dest_port=5986 OR dest_port=22 OR dest_port=3389)
+            | lookup known_admin_sources src_ip OUTPUT is_known
+            | where isnull(is_known)
+        ''',
+        'severity': 'medium',
+    },
+    'dns_tunneling': {
+        'description': 'Suspiciously long DNS queries (possible tunneling)',
+        'query': '''
+            sourcetype=zeek:dns
+            | eval query_len=len(query)
+            | where query_len > 100
+            | stats count by src_ip, query
+            | sort -count
+        ''',
+        'severity': 'high',
+    },
+}
+```
+
+## Network Access Control with 802.1X
+
+For on-premise environments, implement 802.1X for endpoint authentication:
+
+```
+# FreeRADIUS config for 802.1X
+# /etc/freeradius/3.0/mods-enabled/eap
+
+eap {
+    default_eap_type = peap
+    timer_expire = 60
+    
+    tls-config tls-common {
+        private_key_file = /etc/ssl/private/radius.key
+        certificate_file = /etc/ssl/certs/radius.crt
+        ca_file = /etc/ssl/certs/ca-bundle.crt
+        
+        cipher_list = "HIGH:!ADH:!EXPORT:!SSLv2"
+        tls_min_version = "1.2"
+    }
+    
+    peap {
+        tls = tls-common
+        default_eap_type = mschapv2
+    }
+}
+```
+
+## Honeypots: Detect What Signatures Miss
+
+Deploy internal honeypots — they generate zero false positives because nothing legitimate should talk to them:
+
+```python
+# Simple Python honeypot for internal network
+import socket
+import logging
+import json
+from datetime import datetime
+
+logging.basicConfig(level=logging.INFO)
+
+class Honeypot:
+    TRAP_PORTS = [21, 23, 135, 139, 445, 1433, 3306, 3389]
+    
+    def __init__(self, alert_callback):
+        self.alert = alert_callback
+    
+    def start_listener(self, port: int):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('0.0.0.0', port))
+        sock.listen(5)
+        
+        while True:
+            conn, addr = sock.accept()
+            self.alert({
+                'type': 'honeypot_connection',
+                'source_ip': addr[0],
+                'source_port': addr[1],
+                'honeypot_port': port,
+                'timestamp': datetime.utcnow().isoformat(),
+                'severity': 'high',  # Always high — nothing legit hits honeypots
+            })
+            conn.close()
+```
+
+Any connection to an internal honeypot is **automatically high-severity** — no tuning needed.
+
+## The Detection Coverage Matrix
+
+Map your detections to MITRE ATT&CK:
+
+| Tactic | Technique | Detection Method | Coverage |
+|--------|-----------|-----------------|---------|
+| Initial Access | Phishing | Email gateway + URL sandbox | High |
+| Execution | PowerShell | AMSI + script block logging | High |
+| Persistence | Registry Run Keys | Sysmon EventID 13 | Medium |
+| Lateral Movement | Pass the Hash | Event 4624 Type 3 anomaly | Medium |
+| C2 | DNS Tunneling | Zeek DNS + entropy analysis | High |
+| Exfiltration | Large HTTP POST | Proxy logs + DLP | Low |
+
+Honest coverage assessment helps prioritize where to invest next.
+
+---
+
+Network defense isn't about building walls. It's about building a system where attackers can't move freely, can't hide, and can't take anything valuable even when they do get in.
+
+*This post is part of the Security Engineering series. See all posts in [Research](/blog).*

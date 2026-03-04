@@ -1,0 +1,274 @@
+---
+title: "Kubernetes Security Basics: What Every Engineer Should Know"
+description: "A practical guide to Kubernetes security — from RBAC and network policies to secrets management and pod security standards."
+date: "2024-02-20"
+tags: ["kubernetes", "devsecops", "infrastructure", "hardening"]
+---
+
+Kubernetes is complex. Kubernetes security is more complex. I've seen production clusters where the entire `default` service account had `cluster-admin` privileges, where secrets were stored as plaintext in ConfigMaps, and where every pod ran as root.
+
+This guide covers the fundamentals that prevent most Kubernetes security incidents.
+
+## The Kubernetes Attack Surface
+
+Before hardening anything, understand what you're protecting:
+
+- **API Server** — the brain. If it's compromised, everything is
+- **etcd** — the memory. All cluster state, including secrets
+- **Kubelet** — the muscle. Runs on every node, executes pods
+- **Container runtime** — the hands. Actually creates containers
+- **Pod network** — the nervous system. Controls lateral movement
+
+Most attacks follow a path: **external exploit → container escape → node compromise → lateral movement → cluster-admin**.
+
+Your job is to make each step as hard as possible.
+
+## RBAC: The Principle of Least Privilege
+
+RBAC misconfigurations are the #1 Kubernetes security issue. Never use `cluster-admin` for application service accounts.
+
+```yaml
+# Bad — never do this
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: terrible-idea
+subjects:
+- kind: ServiceAccount
+  name: myapp
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin  # This is catastrophic
+  apiGroup: rbac.authorization.k8s.io
+```
+
+Instead, define minimal permissions:
+
+```yaml
+# Good — least privilege
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: production
+  name: myapp-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+  resourceNames: ["myapp-config"]  # Specific resource names
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: myapp-binding
+  namespace: production
+subjects:
+- kind: ServiceAccount
+  name: myapp
+  namespace: production
+roleRef:
+  kind: Role
+  name: myapp-role
+  apiGroup: rbac.authorization.k8s.io
+```
+
+## Network Policies
+
+By default, all pods can communicate with all other pods. This is a lateral movement nightmare.
+
+Apply a default deny policy first:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: production
+spec:
+  podSelector: {}  # Applies to all pods
+  policyTypes:
+  - Ingress
+  - Egress
+```
+
+Then explicitly allow what you need:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-db
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: myapp
+    ports:
+    - protocol: TCP
+      port: 5432
+```
+
+## Pod Security Standards
+
+Use Pod Security Standards (replacing the deprecated PSP):
+
+```yaml
+# Label the namespace to enforce pod security
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+```
+
+And define secure pod specs:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  template:
+    spec:
+      automountServiceAccountToken: false  # Unless needed
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: myapp
+        image: myapp:v1.2.3  # Always use specific tags
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+```
+
+## Secrets Management
+
+Kubernetes Secrets are base64-encoded, not encrypted, by default. Fix this:
+
+```yaml
+# Enable encryption at rest in kube-apiserver config
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+- resources:
+  - secrets
+  providers:
+  - aescbc:
+      keys:
+      - name: key1
+        secret: <base64-encoded-32-byte-key>
+  - identity: {}  # Fallback
+```
+
+Better yet, use external secrets management:
+
+```yaml
+# External Secrets Operator
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: db-credentials
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: db-credentials
+    creationPolicy: Owner
+  data:
+  - secretKey: DB_PASSWORD
+    remoteRef:
+      key: production/db
+      property: password
+```
+
+## Scanning Your Cluster
+
+Use my [Kubernetes Security Scanner](https://github.com/ikblmhndra/k8s-security-scanner) or run a quick check with Trivy:
+
+```bash
+# Scan cluster configuration
+trivy k8s --report summary cluster
+
+# Scan specific namespace
+trivy k8s --report all --namespace production all
+
+# Check for CVEs in running images
+trivy k8s --scanners vuln cluster
+```
+
+## Admission Control
+
+Prevent insecure deployments at the gate with OPA/Gatekeeper:
+
+```rego
+# Deny containers running as root
+package kubernetes.admission.deny_root
+
+deny[msg] {
+    input.request.kind.kind == "Pod"
+    container := input.request.object.spec.containers[_]
+    not container.securityContext.runAsNonRoot
+    msg := sprintf("Container %v must not run as root", [container.name])
+}
+```
+
+## Practical Security Checklist
+
+Run this against your cluster:
+
+```bash
+#!/bin/bash
+echo "=== K8s Security Quick Audit ==="
+
+echo "[*] Checking for cluster-admin bindings..."
+kubectl get clusterrolebindings -o json | \
+  jq '.items[] | select(.roleRef.name=="cluster-admin") | .metadata.name'
+
+echo "[*] Checking for privileged pods..."
+kubectl get pods --all-namespaces -o json | \
+  jq '.items[] | select(.spec.containers[].securityContext.privileged==true) | 
+  {name: .metadata.name, ns: .metadata.namespace}'
+
+echo "[*] Checking for pods without resource limits..."
+kubectl get pods --all-namespaces -o json | \
+  jq '.items[] | select(.spec.containers[].resources.limits==null) | 
+  {name: .metadata.name, ns: .metadata.namespace}'
+
+echo "[*] Checking for default service account tokens..."
+kubectl get pods --all-namespaces -o json | \
+  jq '.items[] | select(.spec.automountServiceAccountToken!=false) | 
+  {name: .metadata.name, ns: .metadata.namespace}' | head -20
+```
+
+Security in Kubernetes is a continuous practice. Start with these fundamentals, instrument everything, and iterate.
+
+---
+
+*Also read: [Building Security Automation](/blog/building-security-automation)*

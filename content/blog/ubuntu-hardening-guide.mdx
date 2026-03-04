@@ -1,0 +1,231 @@
+---
+title: "Ubuntu Server Hardening: A Production-Ready Guide"
+description: "A comprehensive, field-tested guide to hardening Ubuntu servers against modern threats — from kernel parameters to AppArmor profiles and audit logging."
+date: "2024-01-15"
+tags: ["hardening", "linux", "automation", "infrastructure"]
+---
+
+After hardening hundreds of Ubuntu servers across fintech and government environments, I've compiled the patterns that actually matter in production. This isn't a checklist — it's a framework for thinking about defensive depth.
+
+## Why Most Hardening Guides Fail
+
+Most guides give you a list of commands. Run these, check these boxes, you're secure. That's not how it works. Security is a *system*, not a checklist. Every control you implement should answer: **what does this prevent, and what does it detect?**
+
+With that framing, let's build something real.
+
+## The Hardening Stack
+
+Think in layers:
+
+1. **Kernel & OS** — reduce attack surface at the lowest level
+2. **Network** — control what talks to what
+3. **Authentication** — make credential compromise harder
+4. **Auditing** — see everything, store it safely
+5. **Application isolation** — contain the blast radius
+
+## Kernel Parameter Hardening
+
+Start with `/etc/sysctl.d/99-hardening.conf`:
+
+```bash
+# Network security
+net.ipv4.ip_forward = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.tcp_syncookies = 1
+
+# IPv6 (disable if not needed)
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+
+# Memory protection
+kernel.randomize_va_space = 2
+kernel.dmesg_restrict = 1
+kernel.kptr_restrict = 2
+kernel.yama.ptrace_scope = 1
+
+# File system hardening
+fs.protected_hardlinks = 1
+fs.protected_symlinks = 1
+fs.suid_dumpable = 0
+```
+
+Apply immediately:
+```bash
+sysctl -p /etc/sysctl.d/99-hardening.conf
+```
+
+## SSH Hardening
+
+SSH is your attack surface. Harden it aggressively:
+
+```bash
+# /etc/ssh/sshd_config
+
+Protocol 2
+Port 2222                          # Change default port
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM yes
+X11Forwarding no
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/openssh/sftp-server
+MaxAuthTries 3
+MaxSessions 3
+LoginGraceTime 30
+ClientAliveInterval 300
+ClientAliveCountMax 2
+AllowUsers deploy admin         # Only specific users
+Ciphers aes256-gcm@openssh.com,chacha20-poly1305@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+KexAlgorithms curve25519-sha256,diffie-hellman-group-exchange-sha256
+```
+
+## Fail2Ban Configuration
+
+Automate account lockout for brute force:
+
+```bash
+# /etc/fail2ban/jail.local
+[DEFAULT]
+bantime = 3600
+findtime = 600
+maxretry = 3
+banaction = iptables-multiport
+backend = systemd
+
+[sshd]
+enabled = true
+port = 2222
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+bantime = 86400
+```
+
+## Audit Logging with auditd
+
+This is where most guides drop the ball. You need to *see* what's happening:
+
+```bash
+# /etc/audit/rules.d/99-security.rules
+
+# Deletions of important files
+-a always,exit -F arch=b64 -S unlink -S unlinkat -S rename -S renameat -F auid>=1000 -k delete
+
+# Privilege escalation
+-w /bin/su -p x -k priv_esc
+-w /usr/bin/sudo -p x -k priv_esc
+-w /etc/sudoers -p wa -k sudoers
+
+# Authentication
+-w /var/log/faillog -p wa -k auth
+-w /var/log/lastlog -p wa -k auth
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/group -p wa -k identity
+
+# Network
+-a exit,always -F arch=b64 -S socket -k network
+```
+
+## Automating the Baseline
+
+Don't do this manually. Use Ansible:
+
+```yaml
+---
+- name: Apply security baseline
+  hosts: servers
+  become: yes
+  vars:
+    hardening_sysctl_params:
+      net.ipv4.ip_forward: 0
+      kernel.randomize_va_space: 2
+      kernel.dmesg_restrict: 1
+
+  tasks:
+    - name: Apply sysctl parameters
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop: "{{ hardening_sysctl_params | dict2items }}"
+
+    - name: Ensure unnecessary services are disabled
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: no
+      loop:
+        - avahi-daemon
+        - cups
+        - isc-dhcp-server
+        - rpcbind
+      ignore_errors: yes
+```
+
+## Measuring Your Posture
+
+After hardening, measure your baseline with OpenSCAP:
+
+```bash
+# Install
+apt install libopenscap8 ssg-ubuntu2004
+
+# Run CIS Level 1 assessment
+oscap xccdf eval \
+  --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+  --results /tmp/results.xml \
+  --report /tmp/report.html \
+  /usr/share/xml/scap/ssg/content/ssg-ubuntu2004-ds.xml
+```
+
+A well-hardened system should score **85%+** on CIS Level 1. Push for **95%+** on Level 2 for high-security environments.
+
+## What I've Learned in Production
+
+**Drift detection matters more than initial hardening.** Servers drift. Someone installs a package, a developer changes a config, an update reverts a setting. Set up continuous monitoring with `auditd` + a SIEM, or use a simpler drift detection cron:
+
+```python
+#!/usr/bin/env python3
+import hashlib, json, os, subprocess
+from pathlib import Path
+
+MONITORED_FILES = [
+    '/etc/sshd_config',
+    '/etc/sudoers',
+    '/etc/passwd',
+    '/etc/sysctl.conf',
+]
+
+def get_hash(filepath):
+    with open(filepath, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def check_drift():
+    baseline = json.loads(Path('/var/lib/security/baseline.json').read_text())
+    drifts = []
+    for f in MONITORED_FILES:
+        current = get_hash(f)
+        if current != baseline.get(f):
+            drifts.append(f)
+    return drifts
+```
+
+Security isn't a one-time event. It's a continuous process. Build the automation, then monitor the automation.
+
+---
+
+*Next in this series: [Kubernetes Security Basics](/blog/kubernetes-security-basics)*
