@@ -157,10 +157,6 @@ export default function InteractiveTerminal() {
   const inputRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [history])
-
   const handleCommand = (cmd: string) => {
     const trimmed = cmd.trim().toLowerCase()
 
