@@ -4,7 +4,7 @@ import Navigation from '@/components/layout/Navigation'
 import Footer from '@/components/layout/Footer'
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://ikbalmahendra.dev'),
+  metadataBase: new URL('https://ikblmhndra-portfolio.vercel.app/'),
   title: {
     default: 'Ikbal Mahendra | Infrastructure Security Lead',
     template: '%s | Ikbal Mahendra',
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://ikbalmahendra.dev',
+    url: 'https://ikblmhndra-portfolio.vercel.app/',
     title: 'Ikbal Mahendra | Infrastructure Security Lead',
     description:
       'Infrastructure Security Lead specializing in network security, security automation, infrastructure hardening, and cyber defense engineering.',

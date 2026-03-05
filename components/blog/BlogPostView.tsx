@@ -23,7 +23,7 @@ export default function BlogPostView({
   readingTime,
   html,
 }: BlogPostViewProps) {
-  const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(`https://ikbalmahendra.dev/blog/${slug}`)}`
+  const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(`https://ikblmhndra-portfolio.vercel.app//blog/${slug}`)}`
 
   return (
     <div className="relative z-10 pt-24 pb-20 px-4 sm:px-6">
