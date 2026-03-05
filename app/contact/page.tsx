@@ -45,11 +45,27 @@ export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false)
   const [focused, setFocused] = useState<string | null>(null)
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    // In production, integrate with a form service like Resend, Formspree, etc.
-    setSubmitted(true)
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault()
+
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(formState),
+    })
+
+    const data = await res.json()
+
+    if (data.success) {
+      setSubmitted(true)
+    }
+  } catch (err) {
+    console.error(err)
   }
+}
 
   return (
     <div className="relative z-10 pt-24 pb-20 px-4 sm:px-6">
