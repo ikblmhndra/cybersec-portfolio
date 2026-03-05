@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Mail, Github, Linkedin, Shield, Send, CheckCircle, Terminal } from 'lucide-react'
+import { Mail, Github, Linkedin, Shield, Send, CheckCircle, Terminal, MessageCircleCode } from 'lucide-react'
 
 const contactLinks = [
   {
@@ -26,6 +26,13 @@ const contactLinks = [
     href: 'https://linkedin.com/in/ikblmhndra/',
     description: 'Professional network and opportunities',
   },
+  {
+    icon: MessageCircleCode,
+    command: 'connect --whatsapp',
+    value: '+62 851-5646-1754',
+    href: 'https://wa.me/6285156461754',
+    description: 'Instant messaging for quick discussions',
+  }
 ]
 
 export default function ContactPage() {
