@@ -178,6 +178,10 @@ The site is optimized for Lighthouse scores:
 - Images use Next.js `<Image>` with AVIF/WebP
 - Security headers configured in `next.config.js`
 
+## Demo 
+
+https://ikblmhndra-portfolio.vercel.app/
+
 ## License
 
 MIT — feel free to use this as a template for your own portfolio.
