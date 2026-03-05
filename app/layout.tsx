@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import Navigation from '@/components/layout/Navigation'
 import Footer from '@/components/layout/Footer'
+import { Analytics } from "@vercel/analytics/next"
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://ikblmhndra-portfolio.vercel.app'),
@@ -79,6 +80,7 @@ export default function RootLayout({
           <main className="relative">{children}</main>
           <Footer />
         </div>
+        <Analytics />
       </body>
     </html>
   )
