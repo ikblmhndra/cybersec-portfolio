@@ -2,7 +2,7 @@ import { MetadataRoute } from 'next'
 import { getAllPostsMeta } from '@/lib/mdx'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://ikblmhndra-portfolio.vercel.app/'
+  const baseUrl = 'https://ikblmhndra-portfolio.vercel.app'
   const posts = getAllPostsMeta()
 
   const blogUrls = posts.map((post) => ({
