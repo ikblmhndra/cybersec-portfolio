@@ -1,11 +1,9 @@
-'use client'
-
+// Server Component — MDXRemote from /rsc must render server-side
 import Link from 'next/link'
-import { motion } from 'framer-motion'
 import { MDXRemote } from 'next-mdx-remote/rsc'
-import { ArrowLeft, Clock, Calendar, Tag, Share2, Twitter, Link2 } from 'lucide-react'
+import { ArrowLeft, Clock, Calendar, Twitter } from 'lucide-react'
 import { BlogPost, formatDate } from '@/lib/types'
-import { useState } from 'react'
+import CopyButton from './CopyButton'
 import rehypePrettyCode from 'rehype-pretty-code'
 import rehypeSlug from 'rehype-slug'
 import remarkGfm from 'remark-gfm'
@@ -19,7 +17,7 @@ const mdxComponents = {
     <h1 className="font-mono text-2xl sm:text-3xl font-bold text-terminal-green mt-8 mb-4" {...props} />
   ),
   h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h2 className="font-mono text-xl sm:text-2xl font-bold text-terminal-green-dim mt-8 mb-3 flex items-center gap-2 before:content-['##'] before:text-terminal-muted before:font-mono before:text-sm" {...props} />
+    <h2 className="font-mono text-xl sm:text-2xl font-bold text-terminal-green-dim mt-8 mb-3" {...props} />
   ),
   h3: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
     <h3 className="font-mono text-lg font-medium text-terminal-text mt-6 mb-2" {...props} />
@@ -34,7 +32,7 @@ const mdxComponents = {
     <ul className="space-y-1 mb-4 pl-4 list-none" {...props} />
   ),
   li: (props: React.HTMLAttributes<HTMLLIElement>) => (
-    <li className="flex items-start gap-2 text-terminal-text before:content-['>'] before:text-terminal-green before:font-mono before:text-xs before:mt-0.5" {...props} />
+    <li className="flex items-start gap-2 text-terminal-text" {...props} />
   ),
   ol: (props: React.HTMLAttributes<HTMLOListElement>) => (
     <ol className="space-y-1 mb-4 pl-4 list-decimal marker:text-terminal-green" {...props} />
@@ -43,8 +41,7 @@ const mdxComponents = {
     <blockquote className="border-l-2 border-terminal-green/40 pl-4 my-4 text-terminal-muted italic font-mono text-sm" {...props} />
   ),
   code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) => {
-    const isInline = !className
-    if (isInline) {
+    if (!className) {
       return (
         <code className="font-mono text-terminal-green bg-terminal-surface px-1.5 py-0.5 rounded text-sm border border-terminal-border" {...props}>
           {children}
@@ -77,32 +74,19 @@ const mdxComponents = {
 }
 
 const rehypePrettyCodeOptions = {
-  theme: {
-    dark: 'github-dark',
-    light: 'github-dark',
-  },
+  theme: 'github-dark',
   keepBackground: false,
 }
 
 export default function BlogPostClient({ post }: BlogPostClientProps) {
-  const [copied, setCopied] = useState(false)
-
-  const copyLink = () => {
-    navigator.clipboard.writeText(window.location.href)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}&url=${encodeURIComponent(`https://ikbalmahendra.dev/blog/${post.slug}`)}`
 
   return (
     <div className="relative z-10 pt-24 pb-20 px-4 sm:px-6">
       <div className="max-w-3xl mx-auto">
 
         {/* Back */}
-        <motion.div
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="mb-8"
-        >
+        <div className="mb-8">
           <Link
             href="/blog"
             className="inline-flex items-center gap-2 font-mono text-xs text-terminal-muted hover:text-terminal-green transition-colors"
@@ -110,14 +94,10 @@ export default function BlogPostClient({ post }: BlogPostClientProps) {
             <ArrowLeft size={12} />
             cd ../blog
           </Link>
-        </motion.div>
+        </div>
 
         {/* Header */}
-        <motion.header
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-10 space-y-4"
-        >
+        <header className="mb-10 space-y-4">
           {/* Meta */}
           <div className="flex flex-wrap items-center gap-4 font-mono text-xs text-terminal-muted">
             <span className="flex items-center gap-1.5">
@@ -152,32 +132,21 @@ export default function BlogPostClient({ post }: BlogPostClientProps) {
           <div className="flex items-center gap-3 pt-2">
             <span className="font-mono text-xs text-terminal-muted">Share:</span>
             <a
-              href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}&url=${encodeURIComponent(`https://ikbalmahendra.dev/blog/${post.slug}`)}`}
+              href={tweetUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="p-1.5 text-terminal-muted hover:text-terminal-green border border-terminal-border hover:border-terminal-green/30 rounded transition-colors"
             >
               <Twitter size={12} />
             </a>
-            <button
-              onClick={copyLink}
-              className="flex items-center gap-1.5 p-1.5 text-terminal-muted hover:text-terminal-green border border-terminal-border hover:border-terminal-green/30 rounded transition-colors font-mono text-xs"
-            >
-              <Link2 size={12} />
-              {copied ? 'Copied!' : 'Copy link'}
-            </button>
+            <CopyButton />
           </div>
-        </motion.header>
+        </header>
 
         <div className="h-px bg-terminal-border mb-10" />
 
-        {/* MDX content */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="prose prose-sm max-w-none"
-        >
+        {/* MDX content — rendered server-side */}
+        <div className="prose prose-sm max-w-none">
           <MDXRemote
             source={post.content}
             components={mdxComponents}
@@ -191,18 +160,16 @@ export default function BlogPostClient({ post }: BlogPostClientProps) {
               },
             }}
           />
-        </motion.div>
+        </div>
 
         {/* Footer nav */}
         <div className="mt-16 pt-8 border-t border-terminal-border">
-          <Link href="/blog">
-            <motion.div
-              whileHover={{ x: -4 }}
-              className="inline-flex items-center gap-2 font-mono text-sm text-terminal-muted hover:text-terminal-green transition-colors"
-            >
-              <ArrowLeft size={14} />
-              Back to all posts
-            </motion.div>
+          <Link
+            href="/blog"
+            className="inline-flex items-center gap-2 font-mono text-sm text-terminal-muted hover:text-terminal-green transition-colors"
+          >
+            <ArrowLeft size={14} />
+            Back to all posts
           </Link>
         </div>
 

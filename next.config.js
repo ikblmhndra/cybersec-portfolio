@@ -1,16 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  pageExtensions: ['js', 'jsx', 'ts', 'tsx', 'md', 'mdx'],
-  experimental: {
-    mdxRs: false,
-  },
   images: {
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'github.com',
-      },
+      { protocol: 'https', hostname: 'github.com' },
     ],
   },
   async headers() {
@@ -27,8 +20,7 @@ const nextConfig = {
           },
         ],
       },
-    ];
+    ]
   },
-};
-
-module.exports = nextConfig;
+}
+module.exports = nextConfig

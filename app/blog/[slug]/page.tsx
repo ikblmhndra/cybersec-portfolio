@@ -1,10 +1,10 @@
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { getAllPosts, getPostBySlug, formatDate } from '@/lib/mdx'
-import BlogPostClient from '@/components/blog/BlogPostClient'
+import { getAllPosts, getPostBySlug, compileToHtml } from '@/lib/mdx'
+import BlogPostView from '@/components/blog/BlogPostView'
 
 interface BlogPostPageProps {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }
 
 export async function generateStaticParams() {
@@ -13,11 +13,9 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
-  // `params` is a Promise in Next.js dynamic routes; unwrap it before use
   const { slug } = await params
   const post = getPostBySlug(slug)
   if (!post) return {}
-
   return {
     title: post.title,
     description: post.description,
@@ -36,5 +34,18 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const post = getPostBySlug(slug)
   if (!post) notFound()
 
-  return <BlogPostClient post={post} />
+  // Compile MDX → HTML string entirely on the server — no React version conflicts
+  const html = await compileToHtml(post.content)
+
+  return (
+    <BlogPostView
+      slug={post.slug}
+      title={post.title}
+      description={post.description}
+      date={post.date}
+      tags={post.tags}
+      readingTime={post.readingTime}
+      html={html}
+    />
+  )
 }
